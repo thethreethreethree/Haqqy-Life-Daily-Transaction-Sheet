@@ -59,6 +59,20 @@ const customLabel = root2.querySelector('.custom-row input'); // label lives in 
 ok('custom expense row renders with its label', !!customLabel && customLabel.value === 'Speedboat fuel');
 ok('"+ Add expense" button is present', root2.textContent.includes('+ Add expense'));
 ok('custom expense (₱500) lifts expense total to ₱8,328.00', root2.textContent.includes('8,328.00'));
+ok('add button lives in the Expenses card header', !!root2.querySelector('.card-h .btn'));
+
+// the bug fix: clicking + Add expense inserts a row IN PLACE without navigating
+// (navigate() runs window.scrollTo(0,0) → the page jump the user reported).
+let navCalls = 0;
+const root3 = sheet.render({ navigate: () => { navCalls++; }, store, args: { tripId: t.id } });
+const beforeRows = root3.querySelectorAll('.custom-row').length;
+const addButton = [...root3.querySelectorAll('button')].find(b => b.textContent.includes('Add expense'));
+ok('add button found', !!addButton);
+addButton.dispatchEvent(new Event('click'));
+ok('clicking add inserts a row in place (+1)', root3.querySelectorAll('.custom-row').length === beforeRows + 1);
+ok('clicking add does NOT navigate (so the page cannot jump)', navCalls === 0);
+const expBody = addButton.closest('.card').querySelector('tbody'); // scope to the Expenses card
+ok('custom rows render above the template rows', expBody.firstChild.classList.contains('custom-row'));
 
 // ---- trips list renders ----
 try { const r = trips.render({ navigate: () => {}, store, args: null }); document.body.appendChild(r); ok('trips view renders; lists the BIHOPA trip', r.textContent.includes('BIHOPA')); }

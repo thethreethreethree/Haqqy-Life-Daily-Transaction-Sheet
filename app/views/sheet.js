@@ -235,9 +235,6 @@ function channelRevenueFor(ch, trip) {
 
 // A revenue/expense ledger card (Description · unit · amount · total · notes).
 function ledgerCard({ title, sub, cls, items, kind, trip, locked, upd, recalc, reg, numInput, textInput, totalGet, ctx, custom }) {
-  const wrap = el('div', { class: 'card' }, [
-    el('div', { class: 'card-h' }, [el('h3', { text: title }), el('span', { class: 'sub', text: sub })]),
-  ]);
   const tbl = el('table', { class: 'tbl sheet-tbl' });
   tbl.appendChild(el('thead', {}, el('tr', {}, [
     el('th', { text: 'Description' }), el('th', { class: 'num', text: 'Unit' }),
@@ -245,59 +242,75 @@ function ledgerCard({ title, sub, cls, items, kind, trip, locked, upd, recalc, r
     el('th', { text: 'Notes' }),
   ])));
   const body = el('tbody');
+
+  // Build one editable custom row. Its line total is updated INLINE (not via the
+  // recalc registry), so removing the row leaves no dangling registered node and
+  // add/remove can be done purely in the DOM — no full re-render, no scroll jump.
+  function makeCustomRow(c) {
+    const lineOut = el('span', { text: peso(num(c.unit) * num(c.amount)) });
+    const persist = () => store.updateTrip(trip.id, { customExpenses: trip.customExpenses });
+    const refresh = () => { lineOut.textContent = peso(num(c.unit) * num(c.amount)); recalc(); };
+    const labelInp = el('input', { class: 'input sm', type: 'text', value: c.label || '', placeholder: 'expense name', disabled: locked || false });
+    labelInp.addEventListener('input', () => { c.label = labelInp.value; persist(); });
+    const mkNum = (key, step) => {
+      const inp = el('input', { class: 'input num sm', type: 'number', step, min: '0', value: String(c[key] ?? 0), disabled: locked || false });
+      inp.addEventListener('input', () => { c[key] = num(inp.value); persist(); refresh(); });
+      inp.addEventListener('focus', () => inp.select());
+      return inp;
+    };
+    const noteInp = el('input', { class: 'input sm', type: 'text', value: c.notes || '', disabled: locked || false });
+    noteInp.addEventListener('input', () => { c.notes = noteInp.value; persist(); });
+    const del = el('button', {
+      class: 'btn ghost xs', text: '✕', title: 'Remove this line', disabled: locked || false,
+      onClick: () => { store.removeCustomExpense(trip.id, c.id); const tr = del.closest('tr'); if (tr) tr.remove(); recalc(); },
+    });
+    return el('tr', { class: 'custom-row' }, [
+      el('td', {}, labelInp),
+      el('td', { class: 'num' }, mkNum('unit', '1')),
+      el('td', { class: 'num' }, mkNum('amount', '0.01')),
+      el('td', { class: 'num amt-' + cls }, lineOut),
+      el('td', {}, el('div', { class: 'flex gap aic' }, [noteInp, del])),
+    ]);
+  }
+
+  // Custom rows render at the TOP of the list, so a newly-added one appears right
+  // under the header (where the add button lives) — visible without scrolling.
+  if (custom) for (const c of (trip.customExpenses || [])) body.appendChild(makeCustomRow(c));
+
+  let firstTemplateRow = null;
   for (const it of items) {
     const lineOut = el('span');
     if (it.derived) {
       // Total Cash Sales — computed (= cash collected from guests). Read-only.
       reg(lineOut, (c) => peso(c.payment.cash));
-      body.appendChild(el('tr', { class: 'derived-row' }, [
+      const row = el('tr', { class: 'derived-row' }, [
         el('td', {}, [el('strong', { text: it.label }), el('div', { class: 'muted xs', text: 'auto = cash from guests' })]),
         el('td', { class: 'num muted', text: '—' }),
         el('td', { class: 'num muted', text: '—' }),
         el('td', { class: 'num amt-' + cls }, lineOut),
         el('td', {}, ''),
-      ]));
+      ]);
+      if (!firstTemplateRow) firstTemplateRow = row;
+      body.appendChild(row);
       continue;
     }
     const bucket = trip[kind][it.key];
     reg(lineOut, () => peso(num(bucket.unit) * num(bucket.amount)));
-    const onIn = () => { lineOut.textContent = peso(num(bucket.unit) * num(bucket.amount)); recalc(); };
-    const unitInp = numInput(() => bucket.unit, (v) => { upd({ [kind]: { [it.key]: { unit: v } } }); onIn(); }, { step: '1', cls: 'input num sm', min: 0 });
-    const amtInp = numInput(() => bucket.amount, (v) => { upd({ [kind]: { [it.key]: { amount: v } } }); onIn(); }, { step: '0.01', cls: 'input num', min: 0 });
+    const unitInp = numInput(() => bucket.unit, (v) => upd({ [kind]: { [it.key]: { unit: v } } }), { step: '1', cls: 'input num sm', min: 0 });
+    const amtInp = numInput(() => bucket.amount, (v) => upd({ [kind]: { [it.key]: { amount: v } } }), { step: '0.01', cls: 'input num', min: 0 });
     const noteInp = textInput(() => bucket.notes, (v) => upd({ [kind]: { [it.key]: { notes: v } } }), '');
-    body.appendChild(el('tr', {}, [
+    const row = el('tr', {}, [
       el('td', { text: it.label }),
       el('td', { class: 'num' }, unitInp),
       el('td', { class: 'num' }, amtInp),
       el('td', { class: 'num amt-' + cls }, lineOut),
       el('td', {}, noteInp),
-    ]));
-  }
-  // user-added custom rows (enabled for the Expenses card): editable label + a
-  // delete button. Add/remove re-renders the sheet; field edits persist + recalc.
-  if (custom) {
-    for (const c of (trip.customExpenses || [])) {
-      const lineOut = el('span');
-      reg(lineOut, () => peso(num(c.unit) * num(c.amount)));
-      const persist = () => store.updateTrip(trip.id, { customExpenses: trip.customExpenses });
-      const labelInp = textInput(() => c.label, (v) => { c.label = v; persist(); }, 'expense name');
-      const unitInp = numInput(() => c.unit, (v) => { c.unit = v; persist(); }, { step: '1', cls: 'input num sm', min: 0 });
-      const amtInp = numInput(() => c.amount, (v) => { c.amount = v; persist(); }, { step: '0.01', cls: 'input num', min: 0 });
-      const noteInp = textInput(() => c.notes, (v) => { c.notes = v; persist(); }, '');
-      const del = el('button', {
-        class: 'btn ghost xs', text: '✕', title: 'Remove this line', disabled: locked || false,
-        onClick: () => { store.removeCustomExpense(trip.id, c.id); ctx.navigate('sheet', { tripId: trip.id }); },
-      });
-      body.appendChild(el('tr', { class: 'custom-row' }, [
-        el('td', {}, labelInp),
-        el('td', { class: 'num' }, unitInp),
-        el('td', { class: 'num' }, amtInp),
-        el('td', { class: 'num amt-' + cls }, lineOut),
-        el('td', {}, el('div', { class: 'flex gap aic' }, [noteInp, del])),
-      ]));
-    }
+    ]);
+    if (!firstTemplateRow) firstTemplateRow = row;
+    body.appendChild(row);
   }
   tbl.appendChild(body);
+
   const totOut = el('span', { class: 'big' });
   reg(totOut, (c) => peso(totalGet(c)));
   tbl.appendChild(el('tfoot', {}, el('tr', {}, [
@@ -305,14 +318,29 @@ function ledgerCard({ title, sub, cls, items, kind, trip, locked, upd, recalc, r
     el('td', { class: 'num amt-' + cls }, totOut),
     el('td', {}, ''),
   ])));
-  wrap.appendChild(el('div', { class: 'table-wrap' }, tbl));
-  if (custom && !locked) {
-    wrap.appendChild(el('button', {
-      class: 'btn ghost sm mt', text: '+ Add expense',
-      onClick: () => { store.addCustomExpense(trip.id); ctx.navigate('sheet', { tripId: trip.id }); },
-    }));
-  }
-  return wrap;
+
+  // Header. The add button sits here (top-right). Clicking inserts a row IN PLACE
+  // at the top of the list and recalculates — no navigate(), so the page can't jump.
+  const addBtn = (custom && !locked) ? el('button', {
+    class: 'btn primary sm', text: '+ Add expense',
+    onClick: () => {
+      const row = store.addCustomExpense(trip.id);
+      if (!row) return;
+      const tr = makeCustomRow(row);
+      if (firstTemplateRow) body.insertBefore(tr, firstTemplateRow); else body.appendChild(tr);
+      recalc();
+      const inp = tr.querySelector('input');
+      if (inp && inp.focus) { try { inp.focus({ preventScroll: true }); } catch (e) { /* older browsers */ } }
+    },
+  }) : null;
+
+  return el('div', { class: 'card' }, [
+    el('div', { class: 'card-h' }, [
+      el('h3', { text: title }),
+      el('div', { class: 'flex gap aic' }, [el('span', { class: 'sub', text: sub }), addBtn]),
+    ]),
+    el('div', { class: 'table-wrap' }, tbl),
+  ]);
 }
 
 // Drink sales mini-table (per-method quantities → feeds cash/cc/paypal).
