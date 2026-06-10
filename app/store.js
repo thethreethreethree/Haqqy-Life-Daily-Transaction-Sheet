@@ -62,7 +62,7 @@ function defaultState() {
   return {
     version: 1,
     config: {
-      brand: 'Daily Trip Tracker',
+      brand: 'Haqqy Life · Boracay',
       currency: 'PHP',
       staffName: '',            // optional device-local name, stamped on the log
       setupComplete: false,

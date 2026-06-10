@@ -275,7 +275,7 @@ function ledgerCard({ title, sub, cls, items, kind, trip, locked, upd, recalc, r
   }
   tbl.appendChild(body);
   const totOut = el('span', { class: 'big' });
-  reg(totOut, totalGet);
+  reg(totOut, (c) => peso(totalGet(c)));
   tbl.appendChild(el('tfoot', {}, el('tr', {}, [
     el('td', { colspan: '3', class: 'ttl-label', text: `Total ${title.toLowerCase()}` }),
     el('td', { class: 'num amt-' + cls }, totOut),
@@ -376,14 +376,14 @@ function reconCard(trip, locked, upd, numInput, reg) {
   // short/over summary
   const expOut = reg(el('span', { class: 'mono' }), (c) => peso(c.net));
   const cntOut = reg(el('span', { class: 'mono' }), (c) => peso(c.count.total));
-  const soOut = reg(el('span'), (c) => `${c.shortOver >= 0 ? '+' : '−'}${pesoPlain(Math.abs(c.shortOver))}`);
+  const soOut = reg(el('span', { class: 'so-v' }), (c) => `${c.shortOver >= 0 ? '+' : '−'}₱${pesoPlain(Math.abs(c.shortOver))}`);
   const soWrap = el('div', { class: 'recon-so' }, [
     el('h4', { class: 'sub-h', text: 'Short / Over' }),
     line('Expected (NET)', expOut),
     line('Counted', cntOut),
     el('div', { class: 'shortover-badge' }, [
       el('span', { class: 'so-k', text: 'Difference' }),
-      el('span', { class: 'so-v', html: '₱' }, ), soOut,
+      soOut,
     ]),
     el('p', { class: 'muted xs', text: '0 = balanced · (−) short · (+) over' }),
   ]);

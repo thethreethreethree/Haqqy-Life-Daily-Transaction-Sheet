@@ -1,0 +1,8 @@
+# dev-only dependencies (jsdom for the DOM render test — installed with --no-save)
+node_modules/
+package-lock.json
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.log
