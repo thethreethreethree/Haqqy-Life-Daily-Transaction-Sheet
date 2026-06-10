@@ -244,6 +244,27 @@ class Store {
     return t;
   }
 
+  // Custom (ad-hoc) expense lines, beyond the fixed template. Open trips only;
+  // editing the row's fields afterwards goes through updateTrip like any block.
+  addCustomExpense(id, label = '') {
+    const t = this.tripById(id);
+    if (!t || t.status === 'finalized') return null;
+    if (!Array.isArray(t.customExpenses)) t.customExpenses = [];
+    const row = { id: uid('cexp'), label: String(label || '').trim(), unit: 1, amount: 0, notes: '' };
+    t.customExpenses.push(row);
+    t.updatedAt = nowISO();
+    this.save();
+    return row;
+  }
+  removeCustomExpense(id, rowId) {
+    const t = this.tripById(id);
+    if (!t || t.status === 'finalized') return false;
+    t.customExpenses = (t.customExpenses || []).filter((r) => r.id !== rowId);
+    t.updatedAt = nowISO();
+    this.save();
+    return true;
+  }
+
   finalizeTrip(id) {
     const t = this.tripById(id);
     if (!t || t.status === 'finalized') return null;

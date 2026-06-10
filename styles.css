@@ -102,6 +102,7 @@ select.input { cursor: pointer; }
 .sheet-tbl .input.num { max-width: 110px; margin-left: auto; }
 .sheet-tbl .input.num.sm { max-width: 72px; }
 .derived-row { background: var(--gold-50); }
+.custom-row td:first-child { box-shadow: inset 3px 0 0 var(--gold); }
 .row-click { cursor: pointer; transition: background .12s; }
 .row-click:hover { background: var(--gold-50); }
 .trips-tbl td { padding: 11px 10px; }

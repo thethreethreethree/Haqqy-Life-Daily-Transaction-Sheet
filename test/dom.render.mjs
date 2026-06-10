@@ -51,6 +51,15 @@ if (root) {
   }
 }
 
+// ---- "add new expense" feature: custom row + button render ----
+store.addCustomExpense(t.id, 'Speedboat fuel');
+const ce = t.customExpenses[0]; ce.unit = 1; ce.amount = 500; store.updateTrip(t.id, { customExpenses: t.customExpenses });
+const root2 = sheet.render({ navigate: () => {}, store, args: { tripId: t.id } });
+const customLabel = root2.querySelector('.custom-row input'); // label lives in an <input> (not textContent)
+ok('custom expense row renders with its label', !!customLabel && customLabel.value === 'Speedboat fuel');
+ok('"+ Add expense" button is present', root2.textContent.includes('+ Add expense'));
+ok('custom expense (₱500) lifts expense total to ₱8,328.00', root2.textContent.includes('8,328.00'));
+
 // ---- trips list renders ----
 try { const r = trips.render({ navigate: () => {}, store, args: null }); document.body.appendChild(r); ok('trips view renders; lists the BIHOPA trip', r.textContent.includes('BIHOPA')); }
 catch (e) { ok('trips view renders', false); console.error('   ', e); }

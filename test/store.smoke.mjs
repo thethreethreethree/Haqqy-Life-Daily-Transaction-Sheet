@@ -65,9 +65,24 @@ ok('tampering with the log is DETECTED', !broken.ok && broken.brokenAtSeq === vi
 victim.what = savedWhat; // restore
 ok('restoring the entry re-verifies the chain', store.verifyAuditIntegrity().ok);
 
+// custom (ad-hoc) expense lines
+const t2 = store.createTrip({ routeId: bihopa.id, date: '2026-05-03' });
+const base = store.compute(t2.id).expenseTotal;
+const row = store.addCustomExpense(t2.id, 'Speedboat fuel');
+ok('addCustomExpense returns a row with an id', row && row.id);
+row.unit = 2; row.amount = 150; store.updateTrip(t2.id, { customExpenses: t2.customExpenses });
+const afterAdd = store.compute(t2.id);
+ok('custom expense (2 × ₱150) adds ₱300 to expense total', Math.abs(afterAdd.expenseTotal - (base + 300)) < 0.005);
+ok('expenseRows includes the custom row flagged custom', afterAdd.expenseRows.some(r => r.custom && r.label === 'Speedboat fuel' && Math.abs(r.expense - 300) < 0.005));
+ok('NET stays = revenue − expenses with the custom line', Math.abs(afterAdd.net - (afterAdd.revenueTotal - afterAdd.expenseTotal)) < 0.005);
+store.removeCustomExpense(t2.id, row.id);
+ok('removeCustomExpense restores the total', Math.abs(store.compute(t2.id).expenseTotal - base) < 0.005);
+store.finalizeTrip(t2.id);
+ok('addCustomExpense blocked on a finalized trip', store.addCustomExpense(t2.id) === null);
+
 // export/import round-trip
 const exported = store.exportData();
-ok('export carries trips + audit', exported.state.trips.length === 1 && exported.meta.auditEvents > 0);
+ok('export carries trips + audit', exported.state.trips.length === 2 && exported.meta.auditEvents > 0);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

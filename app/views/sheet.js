@@ -175,7 +175,7 @@ export function render(ctx) {
   root.appendChild(ledgerCard({
     title: 'Expenses', sub: 'costs paid out of the day’s cash', cls: 'out',
     items: EXPENSE_ITEMS, kind: 'expenses', trip, locked, upd, recalc, reg, numInput, textInput,
-    totalGet: (c) => c.expenseTotal,
+    totalGet: (c) => c.expenseTotal, ctx, custom: true,
   }));
 
   // ----------------------------------------------------- cash reconciliation
@@ -234,7 +234,7 @@ function channelRevenueFor(ch, trip) {
 }
 
 // A revenue/expense ledger card (Description · unit · amount · total · notes).
-function ledgerCard({ title, sub, cls, items, kind, trip, locked, upd, recalc, reg, numInput, textInput, totalGet }) {
+function ledgerCard({ title, sub, cls, items, kind, trip, locked, upd, recalc, reg, numInput, textInput, totalGet, ctx, custom }) {
   const wrap = el('div', { class: 'card' }, [
     el('div', { class: 'card-h' }, [el('h3', { text: title }), el('span', { class: 'sub', text: sub })]),
   ]);
@@ -273,6 +273,30 @@ function ledgerCard({ title, sub, cls, items, kind, trip, locked, upd, recalc, r
       el('td', {}, noteInp),
     ]));
   }
+  // user-added custom rows (enabled for the Expenses card): editable label + a
+  // delete button. Add/remove re-renders the sheet; field edits persist + recalc.
+  if (custom) {
+    for (const c of (trip.customExpenses || [])) {
+      const lineOut = el('span');
+      reg(lineOut, () => peso(num(c.unit) * num(c.amount)));
+      const persist = () => store.updateTrip(trip.id, { customExpenses: trip.customExpenses });
+      const labelInp = textInput(() => c.label, (v) => { c.label = v; persist(); }, 'expense name');
+      const unitInp = numInput(() => c.unit, (v) => { c.unit = v; persist(); }, { step: '1', cls: 'input num sm', min: 0 });
+      const amtInp = numInput(() => c.amount, (v) => { c.amount = v; persist(); }, { step: '0.01', cls: 'input num', min: 0 });
+      const noteInp = textInput(() => c.notes, (v) => { c.notes = v; persist(); }, '');
+      const del = el('button', {
+        class: 'btn ghost xs', text: '✕', title: 'Remove this line', disabled: locked || false,
+        onClick: () => { store.removeCustomExpense(trip.id, c.id); ctx.navigate('sheet', { tripId: trip.id }); },
+      });
+      body.appendChild(el('tr', { class: 'custom-row' }, [
+        el('td', {}, labelInp),
+        el('td', { class: 'num' }, unitInp),
+        el('td', { class: 'num' }, amtInp),
+        el('td', { class: 'num amt-' + cls }, lineOut),
+        el('td', {}, el('div', { class: 'flex gap aic' }, [noteInp, del])),
+      ]));
+    }
+  }
   tbl.appendChild(body);
   const totOut = el('span', { class: 'big' });
   reg(totOut, (c) => peso(totalGet(c)));
@@ -282,6 +306,12 @@ function ledgerCard({ title, sub, cls, items, kind, trip, locked, upd, recalc, r
     el('td', {}, ''),
   ])));
   wrap.appendChild(el('div', { class: 'table-wrap' }, tbl));
+  if (custom && !locked) {
+    wrap.appendChild(el('button', {
+      class: 'btn ghost sm mt', text: '+ Add expense',
+      onClick: () => { store.addCustomExpense(trip.id); ctx.navigate('sheet', { tripId: trip.id }); },
+    }));
+  }
   return wrap;
 }
 

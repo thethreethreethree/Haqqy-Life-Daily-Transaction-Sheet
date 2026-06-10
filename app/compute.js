@@ -119,6 +119,7 @@ export function defaultTrip(route) {
     drinkSales: [],            // [{ id, name, unitPrice, qtyCash, qtyCC, qtyPaypal }]
     revenue,
     expenses,
+    customExpenses: [],        // user-added ad-hoc expense lines: [{ id, label, unit, amount, notes }]
     cashCount,
     gcash: 0,
     tickets: { inventory: 0, consumed: 0, purchased: 0 },
@@ -203,11 +204,20 @@ export function revenueRows(trip) {
   });
 }
 export function expenseRows(trip) {
-  return EXPENSE_ITEMS.map((it) => {
+  const rows = EXPENSE_ITEMS.map((it) => {
     const v = (trip.expenses && trip.expenses[it.key]) || { unit: 1, amount: 0 };
     const expense = round2(num(v.unit) * num(v.amount));
     return { ...it, unit: num(v.unit), amount: num(v.amount), expense, notes: v.notes || '' };
   });
+  // user-added ad-hoc expense lines (the source sheet had blank extra rows too).
+  for (const c of (trip.customExpenses || [])) {
+    rows.push({
+      key: c.id, label: c.label || '(unnamed expense)', custom: true,
+      unit: num(c.unit), amount: num(c.amount),
+      expense: round2(num(c.unit) * num(c.amount)), notes: c.notes || '',
+    });
+  }
+  return rows;
 }
 
 // ---------------------------------------------------------------------------
