@@ -17,6 +17,7 @@
 
 import { sha256, stableStringify, uid, nowISO, round2, num } from './util.js';
 import { seedRoutes, defaultRoute, defaultTrip, computeTrip } from './compute.js';
+import { normalizeItem, clearedCounts, compareInventories } from './inventory.js';
 
 const STORAGE_KEY = 'dtt_state_v1';
 const GENESIS = '0'.repeat(64);
@@ -71,6 +72,8 @@ function defaultState() {
     },
     routes: [],
     trips: [],
+    inventory: [],              // stock items: { id, name, category, uom, count, par, ... }
+    inventorySnapshots: [],     // saved stock-takes: { id, name, date, items: [...] }
     audit: [],                  // append-only, hash-chained activity log
   };
 }
@@ -99,6 +102,8 @@ class Store {
     this.state.config = Object.assign(defaultState().config, this.state.config || {});
     if (!Array.isArray(this.state.routes)) this.state.routes = [];
     if (!Array.isArray(this.state.trips)) this.state.trips = [];
+    if (!Array.isArray(this.state.inventory)) this.state.inventory = [];
+    if (!Array.isArray(this.state.inventorySnapshots)) this.state.inventorySnapshots = [];
     if (!Array.isArray(this.state.audit)) this.state.audit = [];
     this.verifyAuditIntegrity();
     if (this._migratedFromLS) { this._migratedFromLS = false; this._persist(); }
@@ -309,6 +314,96 @@ class Store {
   // Convenience: the computed view for a trip (pure; safe to call per render).
   compute(id) { const t = this.tripById(id); return t ? computeTrip(t) : null; }
 
+  // -------------------------------------------------------------- inventory
+  // A standalone stock list (not per-trip): items with a free-text on-hand
+  // count + par target, plus saved snapshots for stock-take comparison.
+  get inventory() { return this.state.inventory; }
+  inventoryCategories() {
+    return Array.from(new Set((this.state.inventory || []).map((i) => (i.category || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  }
+  inventoryItemById(id) { return (this.state.inventory || []).find((i) => i.id === id) || null; }
+  addInventoryItem({ name, category, uom, count, par } = {}) {
+    const it = normalizeItem({ name, category, uom, count, par });
+    if (!it.name) return null;
+    const row = { id: uid('inv'), ...it, createdAt: nowISO(), updatedAt: nowISO() };
+    this.state.inventory.push(row);
+    this._audit('inventory.add', `Added inventory item "${row.name}"`, { id: row.id, name: row.name, category: row.category });
+    this.save();
+    return row;
+  }
+  updateInventoryItem(id, patch) {
+    const it = this.inventoryItemById(id);
+    if (!it) return null;
+    for (const k of ['name', 'category', 'uom', 'count', 'par']) {
+      if (k in patch) it[k] = k === 'uom' ? String(patch[k] || '').toUpperCase() : patch[k];
+    }
+    it.updatedAt = nowISO();
+    this.save(); // quiet — inline count edits during a stock-take shouldn't flood the log
+    return it;
+  }
+  removeInventoryItem(id) {
+    const i = this.state.inventory.findIndex((x) => x.id === id);
+    if (i < 0) return false;
+    const [it] = this.state.inventory.splice(i, 1);
+    this._audit('inventory.remove', `Removed inventory item "${it.name}"`, { id, name: it.name });
+    this.save();
+    return true;
+  }
+  // Bulk import (parsed CSV/JSON rows). replace=true swaps the whole list.
+  importInventory(items, { replace = false } = {}) {
+    const rows = (items || []).map((o) => normalizeItem(o)).filter((o) => o.name)
+      .map((o) => ({ id: uid('inv'), ...o, createdAt: nowISO(), updatedAt: nowISO() }));
+    if (replace) this.state.inventory = rows; else this.state.inventory.push(...rows);
+    this._audit('inventory.import', `Imported ${rows.length} inventory item${rows.length === 1 ? '' : 's'}${replace ? ' (replaced list)' : ''}`, { count: rows.length, replace });
+    this.save();
+    return rows.length;
+  }
+
+  // ---- snapshots (saved stock-takes) ----
+  get inventorySnapshots() { return this.state.inventorySnapshots; }
+  snapshotById(id) { return (this.state.inventorySnapshots || []).find((s) => s.id === id) || null; }
+  saveInventorySnapshot(name) {
+    const snap = {
+      id: uid('snap'), name: String(name || 'Snapshot').trim() || 'Snapshot', date: nowISO(),
+      items: (this.state.inventory || []).map((it) => ({ name: it.name, category: it.category, uom: it.uom, count: it.count, par: it.par })),
+    };
+    this.state.inventorySnapshots.push(snap);
+    this._audit('inventory.snapshot', `Saved stock-take snapshot "${snap.name}" (${snap.items.length} items)`, { id: snap.id, name: snap.name, items: snap.items.length });
+    this.save();
+    return snap;
+  }
+  deleteInventorySnapshot(id) {
+    const i = this.state.inventorySnapshots.findIndex((s) => s.id === id);
+    if (i < 0) return false;
+    const [s] = this.state.inventorySnapshots.splice(i, 1);
+    this._audit('inventory.snapshot_delete', `Deleted snapshot "${s.name}"`, { id, name: s.name });
+    this.save();
+    return true;
+  }
+  restoreInventorySnapshot(id) {
+    const s = this.snapshotById(id);
+    if (!s) return false;
+    this.state.inventory = s.items.map((it) => ({ id: uid('inv'), ...normalizeItem(it), createdAt: nowISO(), updatedAt: nowISO() }));
+    this._audit('inventory.restore', `Restored snapshot "${s.name}" (${s.items.length} items)`, { id, name: s.name });
+    this.save();
+    return true;
+  }
+  // Snapshot the current counts, then clear them for a fresh stock-take (the item
+  // master — name/category/uom/par — is kept). Mirrors "Start new inventory".
+  startNewCount(name) {
+    const snap = this.saveInventorySnapshot(name || ('Stock-take ' + nowISO().slice(0, 10)));
+    this.state.inventory = clearedCounts(this.state.inventory);
+    this._audit('inventory.new_count', `Started a new count — cleared ${this.state.inventory.length} on-hand counts`, { snapshot: snap.id, items: this.state.inventory.length });
+    this.save();
+    return snap;
+  }
+  // Compare a saved snapshot (before) vs the current counts (after).
+  compareToSnapshot(id) {
+    const s = this.snapshotById(id);
+    if (!s) return null;
+    return compareInventories(s.items, this.state.inventory, 'count');
+  }
+
   // ------------------------------------------------------ activity / audit log
   _lastAuditHash() {
     const A = this.state.audit;
@@ -368,6 +463,8 @@ class Store {
     this.state.config = Object.assign(defaultState().config, s.config || {});
     if (!Array.isArray(this.state.routes)) this.state.routes = [];
     if (!Array.isArray(this.state.trips)) this.state.trips = [];
+    if (!Array.isArray(this.state.inventory)) this.state.inventory = [];
+    if (!Array.isArray(this.state.inventorySnapshots)) this.state.inventorySnapshots = [];
     if (!Array.isArray(this.state.audit)) this.state.audit = [];
     this.verifyAuditIntegrity();
     this._audit('data.import', `Imported backup (${this.state.trips.length} trips)`, { trips: this.state.trips.length });

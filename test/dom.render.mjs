@@ -12,6 +12,7 @@ const { store } = await import('../app/store.js');
 const sheet = await import('../app/views/sheet.js');
 const trips = await import('../app/views/trips.js');
 const activity = await import('../app/views/activity.js');
+const inventory = await import('../app/views/inventory.js');
 
 let pass = 0, fail = 0;
 const ok = (label, cond) => { if (cond) { pass++; console.log('  ✓ ' + label); } else { fail++; console.error('  ✗ ' + label); } };
@@ -85,6 +86,19 @@ ok('custom revenue row renders with its label', !![...root4.querySelectorAll('.c
 // ---- trips list renders ----
 try { const r = trips.render({ navigate: () => {}, store, args: null }); document.body.appendChild(r); ok('trips view renders; lists the BIHOPA trip', r.textContent.includes('BIHOPA')); }
 catch (e) { ok('trips view renders', false); console.error('   ', e); }
+
+// ---- inventory view renders (items, low-stock, toolbar) ----
+store.addInventoryItem({ name: 'Bottled Water', category: 'Drinks', uom: 'EA', count: '5', par: '50' }); // low
+store.addInventoryItem({ name: 'Ice', category: 'Drinks', uom: 'KG', count: '100', par: '10' });         // ok
+let invRoot;
+try { invRoot = inventory.render({ navigate: () => {}, store, args: null }); document.body.appendChild(invRoot); ok('inventory view renders without throwing', true); }
+catch (e) { ok('inventory view renders without throwing', false); console.error('   ', e); }
+if (invRoot) {
+  ok('inventory lists an item', invRoot.textContent.includes('Bottled Water'));
+  ok('low-stock row is flagged', !!invRoot.querySelector('.inv-table tr.low'));
+  ok('toolbar has Import/Export CSV', invRoot.textContent.includes('Import CSV') && invRoot.textContent.includes('Export CSV'));
+  ok('+ Add item button present', [...invRoot.querySelectorAll('button')].some(b => b.textContent.includes('Add item')));
+}
 
 // ---- activity log renders & reports verified chain ----
 try { const r = activity.render(); document.body.appendChild(r); ok('activity view renders; chain shows "verified"', r.textContent.includes('verified')); }

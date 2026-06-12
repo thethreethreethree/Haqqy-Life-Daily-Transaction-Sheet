@@ -6,12 +6,14 @@ import * as gh from './github.js';
 import * as trips from './views/trips.js';
 import * as sheet from './views/sheet.js';
 import * as activity from './views/activity.js';
+import * as inventory from './views/inventory.js';
 
 const VIEWS = {
-  trips:    { label: 'Trips', icon: '🛥️', render: trips.render },
-  sheet:    { label: 'Trip sheet', icon: '📄', render: sheet.render, hidden: true },
-  activity: { label: 'Activity log', icon: '🪵', render: activity.render },
-  settings: { label: 'Settings', icon: '⚙', render: renderSettings },
+  trips:     { label: 'Trips', icon: '🛥️', render: trips.render },
+  sheet:     { label: 'Trip sheet', icon: '📄', render: sheet.render, hidden: true },
+  inventory: { label: 'Inventory', icon: '📦', render: inventory.render },
+  activity:  { label: 'Activity log', icon: '🪵', render: activity.render },
+  settings:  { label: 'Settings', icon: '⚙', render: renderSettings },
 };
 
 let current = 'trips';

@@ -96,9 +96,35 @@ ok('removeCustomRevenue restores the revenue total', Math.abs(store.compute(t3.i
 store.finalizeTrip(t3.id);
 ok('addCustomRevenue blocked on a finalized trip', store.addCustomRevenue(t3.id) === null);
 
+// inventory: CRUD, snapshots, start-new-count, restore, compare
+ok('inventory starts empty', store.inventory.length === 0);
+const inv1 = store.addInventoryItem({ name: 'Bottled Water', category: 'Drinks', uom: 'EA', count: '24', par: '50' });
+store.addInventoryItem({ name: 'House Rum', category: 'Bar', uom: 'ML', count: '3', par: '2' });
+ok('addInventoryItem adds items with ids', store.inventory.length === 2 && inv1.id);
+ok('inventoryCategories lists distinct cats', store.inventoryCategories().join(',') === 'Bar,Drinks');
+store.updateInventoryItem(inv1.id, { count: '10' });
+ok('updateInventoryItem changes the count', store.inventoryItemById(inv1.id).count === '10');
+const snap = store.saveInventorySnapshot('Before count');
+ok('saveInventorySnapshot stores a copy', store.inventorySnapshots.length === 1 && snap.items.length === 2);
+store.startNewCount('Fresh');
+ok('startNewCount snapshots then clears counts (keeps par)', store.inventory.every(i => i.count === '') && store.inventoryItemById(inv1.id).par === '50' && store.inventorySnapshots.length === 2);
+store.updateInventoryItem(inv1.id, { count: '40' }); // recount water 10 → 40
+const cmp = store.compareToSnapshot(snap.id);
+const waterRow = cmp.rows.find(r => r.name === 'Bottled Water');
+ok('compareToSnapshot shows the recount delta (10 → 40)', waterRow && Math.abs(waterRow.delta - 30) < 0.005);
+store.removeInventoryItem(inv1.id);
+ok('removeInventoryItem deletes the item', store.inventory.length === 1);
+store.restoreInventorySnapshot(snap.id);
+ok('restoreInventorySnapshot brings the list back', store.inventory.length === 2);
+const n = store.importInventory(parseCsvRows(), { replace: true });
+ok('importInventory (replace) swaps the list', n === 2 && store.inventory.length === 2 && store.inventory[0].name === 'Imported A');
+
+function parseCsvRows() { return [{ name: 'Imported A', category: 'X', uom: 'EA', count: '1', par: '' }, { name: 'Imported B', category: 'X', uom: 'EA', count: '2', par: '' }]; }
+
 // export/import round-trip
 const exported = store.exportData();
 ok('export carries trips + audit', exported.state.trips.length === 3 && exported.meta.auditEvents > 0);
+ok('export carries inventory + snapshots', Array.isArray(exported.state.inventory) && exported.state.inventory.length === 2 && exported.state.inventorySnapshots.length >= 1);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
