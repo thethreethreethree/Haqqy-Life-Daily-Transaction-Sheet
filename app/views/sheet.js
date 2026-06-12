@@ -168,14 +168,16 @@ export function render(ctx) {
   root.appendChild(ledgerCard({
     title: 'Revenue', sub: 'cash side — what came in', cls: 'in',
     items: REVENUE_ITEMS, kind: 'revenue', trip, locked, upd, recalc, reg, numInput, textInput,
-    totalGet: (c) => c.revenueTotal,
+    totalGet: (c) => c.revenueTotal, ctx,
+    customField: 'customRevenue', addLabel: '+ Add revenue source', placeholder: 'revenue source',
   }));
 
   // --------------------------------------------------------- expense ledger
   root.appendChild(ledgerCard({
     title: 'Expenses', sub: 'costs paid out of the day’s cash', cls: 'out',
     items: EXPENSE_ITEMS, kind: 'expenses', trip, locked, upd, recalc, reg, numInput, textInput,
-    totalGet: (c) => c.expenseTotal, ctx, custom: true,
+    totalGet: (c) => c.expenseTotal, ctx,
+    customField: 'customExpenses', addLabel: '+ Add expense', placeholder: 'expense name',
   }));
 
   // ----------------------------------------------------- cash reconciliation
@@ -234,7 +236,8 @@ function channelRevenueFor(ch, trip) {
 }
 
 // A revenue/expense ledger card (Description · unit · amount · total · notes).
-function ledgerCard({ title, sub, cls, items, kind, trip, locked, upd, recalc, reg, numInput, textInput, totalGet, ctx, custom }) {
+function ledgerCard({ title, sub, cls, items, kind, trip, locked, upd, recalc, reg, numInput, textInput, totalGet, ctx, customField, addLabel, placeholder }) {
+  const custom = !!customField; // custom (ad-hoc) rows enabled when a field is given
   const tbl = el('table', { class: 'tbl sheet-tbl' });
   tbl.appendChild(el('thead', {}, el('tr', {}, [
     el('th', { text: 'Description' }), el('th', { class: 'num', text: 'Unit' }),
@@ -248,9 +251,9 @@ function ledgerCard({ title, sub, cls, items, kind, trip, locked, upd, recalc, r
   // add/remove can be done purely in the DOM — no full re-render, no scroll jump.
   function makeCustomRow(c) {
     const lineOut = el('span', { text: peso(num(c.unit) * num(c.amount)) });
-    const persist = () => store.updateTrip(trip.id, { customExpenses: trip.customExpenses });
+    const persist = () => store.updateTrip(trip.id, { [customField]: trip[customField] });
     const refresh = () => { lineOut.textContent = peso(num(c.unit) * num(c.amount)); recalc(); };
-    const labelInp = el('input', { class: 'input sm', type: 'text', value: c.label || '', placeholder: 'expense name', disabled: locked || false });
+    const labelInp = el('input', { class: 'input sm', type: 'text', value: c.label || '', placeholder: placeholder || 'name', disabled: locked || false });
     labelInp.addEventListener('input', () => { c.label = labelInp.value; persist(); });
     const mkNum = (key, step) => {
       const inp = el('input', { class: 'input num sm', type: 'number', step, min: '0', value: String(c[key] ?? 0), disabled: locked || false });
@@ -262,7 +265,7 @@ function ledgerCard({ title, sub, cls, items, kind, trip, locked, upd, recalc, r
     noteInp.addEventListener('input', () => { c.notes = noteInp.value; persist(); });
     const del = el('button', {
       class: 'btn ghost xs', text: '✕', title: 'Remove this line', disabled: locked || false,
-      onClick: () => { store.removeCustomExpense(trip.id, c.id); const tr = del.closest('tr'); if (tr) tr.remove(); recalc(); },
+      onClick: () => { store.removeCustomLine(trip.id, customField, c.id); const tr = del.closest('tr'); if (tr) tr.remove(); recalc(); },
     });
     return el('tr', { class: 'custom-row' }, [
       el('td', {}, labelInp),
@@ -275,7 +278,7 @@ function ledgerCard({ title, sub, cls, items, kind, trip, locked, upd, recalc, r
 
   // Custom rows render at the TOP of the list, so a newly-added one appears right
   // under the header (where the add button lives) — visible without scrolling.
-  if (custom) for (const c of (trip.customExpenses || [])) body.appendChild(makeCustomRow(c));
+  if (custom) for (const c of (trip[customField] || [])) body.appendChild(makeCustomRow(c));
 
   let firstTemplateRow = null;
   for (const it of items) {
@@ -322,9 +325,9 @@ function ledgerCard({ title, sub, cls, items, kind, trip, locked, upd, recalc, r
   // Header. The add button sits here (top-right). Clicking inserts a row IN PLACE
   // at the top of the list and recalculates — no navigate(), so the page can't jump.
   const addBtn = (custom && !locked) ? el('button', {
-    class: 'btn primary sm', text: '+ Add expense',
+    class: 'btn primary sm', text: addLabel || '+ Add line',
     onClick: () => {
-      const row = store.addCustomExpense(trip.id);
+      const row = store.addCustomLine(trip.id, customField);
       if (!row) return;
       const tr = makeCustomRow(row);
       if (firstTemplateRow) body.insertBefore(tr, firstTemplateRow); else body.appendChild(tr);

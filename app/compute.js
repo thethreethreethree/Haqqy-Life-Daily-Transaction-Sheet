@@ -118,6 +118,7 @@ export function defaultTrip(route) {
     guests,
     drinkSales: [],            // [{ id, name, unitPrice, qtyCash, qtyCC, qtyPaypal }]
     revenue,
+    customRevenue: [],         // user-added ad-hoc revenue lines: [{ id, label, unit, amount, notes }]
     expenses,
     customExpenses: [],        // user-added ad-hoc expense lines: [{ id, label, unit, amount, notes }]
     cashCount,
@@ -194,7 +195,7 @@ export function totalGuests(trip) {
 // ---------------------------------------------------------------------------
 export function revenueRows(trip) {
   const pay = paymentTotals(trip);
-  return REVENUE_ITEMS.map((it) => {
+  const rows = REVENUE_ITEMS.map((it) => {
     if (it.derived) {
       return { ...it, unit: 1, amount: pay.cash, revenue: pay.cash, notes: '' };
     }
@@ -202,6 +203,16 @@ export function revenueRows(trip) {
     const revenue = round2(num(v.unit) * num(v.amount));
     return { ...it, unit: num(v.unit), amount: num(v.amount), revenue, notes: v.notes || '' };
   });
+  // user-added ad-hoc revenue lines. group:'custom' (not 'fee') so they count in
+  // the revenue total / NET but NOT in "additional cash collected" (the fee sum).
+  for (const c of (trip.customRevenue || [])) {
+    rows.push({
+      key: c.id, label: c.label || '(unnamed revenue)', custom: true, group: 'custom',
+      unit: num(c.unit), amount: num(c.amount),
+      revenue: round2(num(c.unit) * num(c.amount)), notes: c.notes || '',
+    });
+  }
+  return rows;
 }
 export function expenseRows(trip) {
   const rows = EXPENSE_ITEMS.map((it) => {

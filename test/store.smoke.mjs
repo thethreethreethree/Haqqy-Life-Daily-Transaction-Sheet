@@ -80,9 +80,25 @@ ok('removeCustomExpense restores the total', Math.abs(store.compute(t2.id).expen
 store.finalizeTrip(t2.id);
 ok('addCustomExpense blocked on a finalized trip', store.addCustomExpense(t2.id) === null);
 
+// custom (ad-hoc) revenue lines (mirror of expenses)
+const t3 = store.createTrip({ routeId: bihopa.id, date: '2026-05-04' });
+const baseRev = store.compute(t3.id).revenueTotal;
+const baseNet = store.compute(t3.id).net;
+const rrow = store.addCustomRevenue(t3.id, 'Charter add-on');
+rrow.unit = 1; rrow.amount = 2000; store.updateTrip(t3.id, { customRevenue: t3.customRevenue });
+const afterRev = store.compute(t3.id);
+ok('custom revenue (₱2000) adds to revenue total', Math.abs(afterRev.revenueTotal - (baseRev + 2000)) < 0.005);
+ok('custom revenue raises NET by its amount', Math.abs(afterRev.net - (baseNet + 2000)) < 0.005);
+ok('custom revenue is NOT counted as additional cash collected', Math.abs(afterRev.additionalCash) < 0.005);
+ok('revenueRows includes the custom revenue row flagged custom', afterRev.revenueRows.some(r => r.custom && r.label === 'Charter add-on' && Math.abs(r.revenue - 2000) < 0.005));
+store.removeCustomRevenue(t3.id, rrow.id);
+ok('removeCustomRevenue restores the revenue total', Math.abs(store.compute(t3.id).revenueTotal - baseRev) < 0.005);
+store.finalizeTrip(t3.id);
+ok('addCustomRevenue blocked on a finalized trip', store.addCustomRevenue(t3.id) === null);
+
 // export/import round-trip
 const exported = store.exportData();
-ok('export carries trips + audit', exported.state.trips.length === 2 && exported.meta.auditEvents > 0);
+ok('export carries trips + audit', exported.state.trips.length === 3 && exported.meta.auditEvents > 0);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

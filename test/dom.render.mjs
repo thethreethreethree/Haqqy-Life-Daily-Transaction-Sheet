@@ -59,7 +59,7 @@ const customLabel = root2.querySelector('.custom-row input'); // label lives in 
 ok('custom expense row renders with its label', !!customLabel && customLabel.value === 'Speedboat fuel');
 ok('"+ Add expense" button is present', root2.textContent.includes('+ Add expense'));
 ok('custom expense (₱500) lifts expense total to ₱8,328.00', root2.textContent.includes('8,328.00'));
-ok('add button lives in the Expenses card header', !!root2.querySelector('.card-h .btn'));
+ok('add buttons live in card headers (revenue + expenses)', root2.querySelectorAll('.card-h .btn').length >= 2);
 
 // the bug fix: clicking + Add expense inserts a row IN PLACE without navigating
 // (navigate() runs window.scrollTo(0,0) → the page jump the user reported).
@@ -73,6 +73,14 @@ ok('clicking add inserts a row in place (+1)', root3.querySelectorAll('.custom-r
 ok('clicking add does NOT navigate (so the page cannot jump)', navCalls === 0);
 const expBody = addButton.closest('.card').querySelector('tbody'); // scope to the Expenses card
 ok('custom rows render above the template rows', expBody.firstChild.classList.contains('custom-row'));
+
+// ---- "add new revenue source" on the Revenue card (mirror of expenses) ----
+store.addCustomRevenue(t.id, 'Charter add-on');
+const cr = t.customRevenue[0]; cr.unit = 1; cr.amount = 2000; store.updateTrip(t.id, { customRevenue: t.customRevenue });
+const root4 = sheet.render({ navigate: () => {}, store, args: { tripId: t.id } });
+const revBtn = [...root4.querySelectorAll('button')].find(b => b.textContent.includes('Add revenue source'));
+ok('"+ Add revenue source" button present on Revenue card', !!revBtn);
+ok('custom revenue row renders with its label', !![...root4.querySelectorAll('.custom-row input')].find(i => i.value === 'Charter add-on'));
 
 // ---- trips list renders ----
 try { const r = trips.render({ navigate: () => {}, store, args: null }); document.body.appendChild(r); ok('trips view renders; lists the BIHOPA trip', r.textContent.includes('BIHOPA')); }

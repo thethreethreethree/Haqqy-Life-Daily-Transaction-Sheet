@@ -244,26 +244,34 @@ class Store {
     return t;
   }
 
-  // Custom (ad-hoc) expense lines, beyond the fixed template. Open trips only;
-  // editing the row's fields afterwards goes through updateTrip like any block.
-  addCustomExpense(id, label = '') {
+  // Custom (ad-hoc) ledger lines beyond the fixed template, for either the revenue
+  // side (field 'customRevenue') or the expense side ('customExpenses'). Open trips
+  // only; editing a row's fields afterwards goes through updateTrip like any block.
+  addCustomLine(id, field, label = '') {
+    if (field !== 'customRevenue' && field !== 'customExpenses') return null;
     const t = this.tripById(id);
     if (!t || t.status === 'finalized') return null;
-    if (!Array.isArray(t.customExpenses)) t.customExpenses = [];
-    const row = { id: uid('cexp'), label: String(label || '').trim(), unit: 1, amount: 0, notes: '' };
-    t.customExpenses.push(row);
+    if (!Array.isArray(t[field])) t[field] = [];
+    const row = { id: uid(field === 'customRevenue' ? 'crev' : 'cexp'), label: String(label || '').trim(), unit: 1, amount: 0, notes: '' };
+    t[field].push(row);
     t.updatedAt = nowISO();
     this.save();
     return row;
   }
-  removeCustomExpense(id, rowId) {
+  removeCustomLine(id, field, rowId) {
+    if (field !== 'customRevenue' && field !== 'customExpenses') return false;
     const t = this.tripById(id);
     if (!t || t.status === 'finalized') return false;
-    t.customExpenses = (t.customExpenses || []).filter((r) => r.id !== rowId);
+    t[field] = (t[field] || []).filter((r) => r.id !== rowId);
     t.updatedAt = nowISO();
     this.save();
     return true;
   }
+  // Named wrappers (stable API used by the views & tests).
+  addCustomExpense(id, label = '') { return this.addCustomLine(id, 'customExpenses', label); }
+  removeCustomExpense(id, rowId) { return this.removeCustomLine(id, 'customExpenses', rowId); }
+  addCustomRevenue(id, label = '') { return this.addCustomLine(id, 'customRevenue', label); }
+  removeCustomRevenue(id, rowId) { return this.removeCustomLine(id, 'customRevenue', rowId); }
 
   finalizeTrip(id) {
     const t = this.tripById(id);
